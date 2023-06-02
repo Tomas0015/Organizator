@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Organizace součástek</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<style>
+body {
+	margin: 0px;
+}
+.search {
+	width: 45%;
+	font-size: 20px;
+	display: inline-block;
+}
+nav {
+	width: 100%;
+	background-color: #F0F0F0;
+	text-align: left;
+	border-bottom-style: solid;
+	border-color: #A0A0A0;
+	border-width: 1px;
+}
+main {
+	text-align: center;
+}
+nav button {
+	font-size: 15px;
+	border-style: none solid none solid;
+	border-color: #A0A0A0;
+	padding: 10px 0 10px 0;
+	width: 10%;
+	border-width: 1px;
+	background-color: #D0D0D0;
+	white-space: nowrap;
+}
+nav button:active {
+	background-color: #A0A0A0;
+}
+.wind {
+	height: 300px;
+	width: 400px;
+	z-index: 2;
+	position: fixed;
+	top: 150px;
+	left: 100px;
+	border-color: #202020;
+	border-style: solid;
+	border-width: 3px;
+	text-align: center;
+	display: none;
+}
+table {
+	font-family: arial, sans-serif;
+	border-collapse: collapse;
+	width: 95%;
+	margin-top: 100px;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+td, th {
+	border: 1px solid #dddddd;
+	text-align: left;
+	padding: 0 8px 0 8px;
+	height: 40px;
+}
+th {
+	background-color: grey;
+}
+h3 {
+	margin: 0;
+}
+</style>
+<script>
+var devs = new Array();
+var DB = new Array();
+var netConf = new Array();
+var confDevBuffer = new Array();
+var tempCell;
+var markedID = new Array();
+var markedCol = new Array();
+var DBreq = new XMLHttpRequest();
+var DBSavereq = new XMLHttpRequest();
+var NETreq = new XMLHttpRequest();
+var NETSavereq = new XMLHttpRequest();
+var CNreq = new XMLHttpRequest();
+var CNSavereq = new XMLHttpRequest();
+var LEDreq = new XMLHttpRequest();
+var findTimeOutHandle;
+var table;
+var locRet;
+var moving;
+var inTerm;
+DBreq.onload = function() {
+	DBGen(this.responseText);
+	DBDraw(DB, true);
+};
+DBSavereq.onload = function() {
+	alert("Uloženo!");
+};
+NETreq.onload = function() {
+	netConf = this.responseText.split("\n");
+};
+NETSavereq.onload = function() {
+	alert("Uloženo!");
+};
+CNreq.onload = function() {
+	devGen(this.responseText);
+};
+CNSavereq.onload = function() {
+	alert("Uloženo!");
+};
+function load(){
+	table = document.getElementById("list");
+	DBreq.open("GET", "/gconf?DB=");
+	DBreq.send();
+	NETreq.open("GET", "/gconf?net=");
+	NETreq.send();
+	CNreq.open("GET", "/gconf?dev=");
+	CNreq.send();
+}
+function DBGen(data){
+	DB = new Array();
+	var byCategory = data.split("\r");
+	for (let i = 1; i < byCategory.length; i++){
+		DB.push(byCategory[i].split("\n"));
+	}
+}
+function DBDraw(inDB, action){
+	table.innerHTML = "";
+	var head = "<th style=\"width:70%\"><h3>Název</h3></th><th style=\"width:5%\"><h3>Počet</h3></th><th style=\"width:25%\"><h3>Akce</h3></th>";
+	if(!action){
+		head = "<th style=\"width:80%\"><h3>Název</h3></th><th style=\"width:10%\"><h3>Počet</h3></th><th style=\"width:10%\"><h3>Akce</h3></th>";
+	}
+	table.createTHead().insertRow(-1).outerHTML = head;
+	for (let i = 0; i < inDB.length; i++){
+		var catHead = "<th colspan=\"2\"><h3>" + inDB[i][0] + "</h3></th><th><button onclick=\"remove(event)\">odstranit</button><button onclick=\"rename(event)\">přejmenovat</button></th>";
+		if(!action){
+			catHead = "<th colspan=\"3\"><h3>" + inDB[i][0] + "</h3></th>";
+		}
+		table.createTHead().insertRow(-1).insertCell(0).outerHTML = catHead;
+		var line = inDB[i][1].split("\t")
+		for (let j = 1; j < inDB[i].length; j++){
+			var dataLine = table.insertRow(-1);
+			dataLine.insertCell(0).innerText = inDB[i][j].split("\t")[0];
+			if(action){
+				dataLine.insertCell(1).outerHTML = "<td><input type=\"number\" min=\"0\" value=\"" + inDB[i][j].split("\t")[1] + "\"></td>";
+				dataLine.insertCell(2).outerHTML = "<td><button onclick=\"find(event)\" value=" + inDB[i][j].split("\t")[2] + ">najít</button><button onclick=\"mark(event)\" value=" + inDB[i][j].split("\t")[2] + ">označit</button><button onclick=\"move(event)\" value=" + inDB[i][j].split("\t")[2] + ">přesunout</button><button onclick=\"remove(event)\">odstranit</button><button onclick=\"rename(event)\">přejmenovat</button></td>";
+			}else{
+				dataLine.insertCell(1).innerText = inDB[i][j].split("\t")[1];
+				dataLine.insertCell(2).outerHTML = "<td><button onclick=\"find(event)\" value=" + inDB[i][j].split("\t")[2] + ">najít</button><button onclick=\"mark(event)\" value=" + inDB[i][j].split("\t")[2] + ">označit</button>";
+			}
+		}
+	}
+}
+function devGen(inp){
+	var preDevs = inp.split("\r");
+	devs = new Array();
+	for (let i = 1; i < preDevs.length; i++){
+		devs.push(preDevs[i].split("\t"));
+	}
+}
+function find(e){
+	refreshLEDs();
+	setLED(e.target.value, "&R=255&G=255&B=255");
+	findTimeOutHandle = setTimeout(refreshLEDs, 60000);
+}
+function refreshLEDs(){
+	clearAll();
+	sendMarked();
+}
+function mark(e){
+	tempCell = e.target.value;
+	var colPicker = document.getElementById("col");
+	colPicker.value = "#000000";
+	colPicker.click();
+}
+function wipeMarked(){
+	markedID = new Array();
+	markedCol = new Array();
+	clearAll();
+}
+function sendMarked(){
+	for (let i = 0; i < markedID.length; i++){
+		setLED(markedID[i], "&R=" + parseInt(markedCol[i].substr(1,2), 16) + "&G=" + parseInt(markedCol[i].substr(3,2), 16) + "&B=" + parseInt(markedCol[i].substr(5,2), 16));
+	}
+}
+function colorPickerReturn(){
+	markedID.push(tempCell);
+	markedCol.push(document.getElementById("col").value);
+	sendMarked();
+}
+function clearAll(){
+	clearTimeout(findTimeOutHandle);
+	for (let i = 0; i < devs.length; i++){
+		LEDreq.open("GET", "/sLEDs?S=0&L=255&P=" + devs[i][1] + "&R=0&G=0&B=0", false);
+		LEDreq.send();
+	}
+}
+function setLED(ID, colStr){
+	var box = getDev(ID);
+	var LEDNum = parseInt(ID.substring(1));
+	
+	for (let i = 4; i < box.length; i++){
+		var splitRange = box[i].split("-");
+		var lowLED = parseInt(splitRange[0]);
+		var highLED = parseInt(splitRange[1]);
+		if ((LEDNum >= lowLED) && (LEDNum <= highLED)){
+			LEDreq.open("GET", "/sLEDs?S=" + lowLED + "&L=" + (highLED - lowLED + 1) + "&P=" + box[1] + colStr, false);
+			LEDreq.send();
+			return;
+		}
+	}
+	
+	LEDreq.open("GET", "/sLED?N=" + LEDNum + "&P=" + box[1] + colStr, false);
+	LEDreq.send();
+}
+function getDev(ID){
+	for (let i = 0; i < devs.length; i++){
+		if (devs[i][0] == ID.charAt(0))
+			return devs[i];
+	}
+	return 0;
+}
+function remove(e){
+	var row = e.target.parentElement.parentElement;
+	if(confirm("Opravdu odstanit " + row.firstElementChild.innerText + "?")){
+		var index = row.rowIndex;
+		if(row.childElementCount == 3){
+			row.outerHTML = "";
+		}else{
+			do{
+				table.rows[index].outerHTML = "";
+			}
+			while(table.rows[index].childElementCount == 3)
+		}
+		refreshLEDs();
+	}
+}
+function rename(e){
+	var cell = e.target.parentElement.parentElement.firstElementChild;
+	if(cell.colSpan == 2)
+		cell = cell.firstElementChild;
+	var newName = "";
+	while (newName == "")
+			newName = prompt("Vložte prosím nový název.", cell.innerText);
+	cell.innerText = newName;
+	DBGen(DBStrGen());
+}
+function DBStrGen(){
+	var DBStr = "";
+	for (let i = 1; i < table.rows.length; i++){
+		if(table.rows[i].childElementCount == 2){
+			DBStr += "\r" + table.rows[i].cells[0].innerText;
+		}else{
+			DBStr += "\n" + table.rows[i].cells[0].innerText + "\t" + table.rows[i].cells[1].children[0].value + "\t" + table.rows[i].cells[2].children[0].value;
+		}
+	}
+	return DBStr;
+}
+function save(){
+	var saveStr = DBStrGen();
+	DBSavereq.open("GET", "/sconf?DB=" + encodeURIComponent(saveStr));
+	DBSavereq.send();
+	DBGen(saveStr);
+}
+function arrowKey(e){
+	var outp = document.getElementById("currLoc");
+	var dev = getDev(document.getElementById("boxCode").value);
+	var max = parseInt(dev[2]);
+	var row = parseInt(dev[3]);
+	var val = parseInt(outp.innerText);
+	if(e){
+		switch(e.keyCode){
+			case 37:
+				val--;
+				break;
+			case 38:
+				val -= row;
+				break;
+			case 39:
+				val++;
+				break;
+			case 40:
+				val += row;
+				break;
+		}
+	}
+	if (val < 0)
+		val += max;
+	val %= max;
+	outp.innerText = val;
+	clearAll();
+	setLED(dev[0] + val, "&R=0&G=255&B=0");
+}
+function move(e){
+	clearAll();
+	setLED(e.target.value, "&R=255&G=0&B=0");
+	locRet = moveSave;
+	moving = e.target;
+	Loc(e.target.value);
+}
+function moveSave(){
+	var newLoc = document.getElementById("boxCode").value + document.getElementById("currLoc").value;
+	for (let i = 0; (i+1) < moving.parentElement.children.length; i++){
+		moving.parentElement.children[i].value = newLoc;
+	}
+}
+function WiFiSettings(){
+	var elm = document.getElementById("WiFi");
+	var inputs = elm.getElementsByTagName("input");
+	for (let i = 0; i < inputs.length; i++){
+		inputs[i].value = netConf[i];
+	}
+	setWindow(elm);
+}
+function closeWiFiSettings(e, saved){
+	if(saved){
+		var inputs = document.getElementById("WiFi").getElementsByTagName("input");
+		var saveStr = "";
+		for (let i = 0; i < inputs.length; i++){
+			netConf[i] = inputs[i].value;
+			saveStr += inputs[i].value + "\n";
+		}
+		NETSavereq.open("GET", "/sconf?net=" + encodeURIComponent(saveStr));
+		NETSavereq.send();
+	}
+	closeWindow(e);
+}
+function Loc(origin){
+	document.addEventListener("keydown", arrowKey);
+	document.body.style.overflow = "hidden";
+	var boxSel = document.getElementById("boxCode");
+	boxSel.innerHTML = "";
+	for (let i = 0; i < devs.length; i++){
+		var boxOpt = document.createElement("option");
+		boxOpt.text = devs[i][0];
+		boxOpt.value = devs[i][0];
+		boxSel.add(boxOpt);
+	}
+	boxSel.value = origin.charAt(0);
+	document.getElementById("currLoc").value = origin.substring(1);
+	setWindow(document.getElementById("Loc"));
+}
+function closeLoc(e, save){
+	refreshLEDs();
+	document.removeEventListener("keydown", arrowKey);
+	document.body.style.overflow = "";
+	closeWindow(e);
+	if(save){
+		locRet();
+	}
+}
+function addNew(){
+	var catSel = document.getElementById("cat");
+	catSel.innerHTML = "<option value=\"\">Nová kategorie</option>";
+	for (let i = 0; i < DB.length; i++){
+		var catOpt = document.createElement("option");
+		catOpt.text = DB[i][0];
+		catOpt.value = DB[i][0];
+		catSel.add(catOpt);
+	}
+	document.getElementById("newName").value = "";
+	document.getElementById("newStock").value = 0;
+	setWindow(document.getElementById("New"));
+}
+function closeNew(e, nexted){
+	if((document.getElementById("newName").value == "") && nexted){
+		alert("Název nemůže být prázdný!");
+		return;
+	}
+	closeWindow(e);
+	if(nexted){
+		locRet = createNew;
+		Loc("A0");
+	}
+}
+function createNew(){
+	var cat = document.getElementById("cat").value;
+	var name = document.getElementById("newName").value;
+	var stock = document.getElementById("newStock").value;
+	var loc = document.getElementById("boxCode").value + document.getElementById("currLoc").value;
+	var insertIndex = -1;
+	if(cat != ""){
+		var breakFlag = false;
+		for (let i = 1; i < table.rows.length; i++){
+			if(table.rows[i].childElementCount == 2){
+				if(table.rows[i].cells[0].innerText == cat){
+					breakFlag = true;
+				}else if(breakFlag){
+					insertIndex = i;
+					break;
+				}
+			}
+		}
+	}else{
+		while (cat == "")
+			cat = prompt("Vložte prosím název nové kategorie.");
+		table.createTHead().insertRow(-1).insertCell(0).outerHTML = "<th colspan=\"2\"><h3>" + cat + "</h3></th><th><button onclick=\"remove(event)\">odstranit</button><button onclick=\"rename(event)\">přejmenovat</button></th>";
+	}
+	
+	var dataLine = table.insertRow(insertIndex);
+	dataLine.insertCell(0).innerText = name;
+	dataLine.insertCell(1).outerHTML = "<td><input type=\"number\" min=\"0\" value=\"" + stock + "\"></td>";
+	dataLine.insertCell(2).outerHTML = "<td><button onclick=\"find(event)\" value=" + loc + ">najít</button><button onclick=\"mark(event)\" value=" + loc + ">označit</button><button onclick=\"move(event)\" value=" + loc + ">přesunout</button><button onclick=\"remove(event)\">odstranit</button><button onclick=\"rename(event)\">přejmenovat</button></td>";
+	
+	DBGen(DBStrGen());
+}
+function devSettings(){
+	var boxSel = document.getElementById("boxSel");
+	var catSel = document.getElementById("cat");
+	boxSel.innerHTML = "";
+	for (let i = 65; i < 91; i++){
+		var boxOpt = document.createElement("option");
+		var devChar = String.fromCharCode(i);
+		boxOpt.text = devChar;
+		boxOpt.value = boxOpt.text;
+		boxSel.add(boxOpt);
+		confDevBuffer[devChar] = ["0", "0", "0", ""];
+		var devInfo = getDev(devChar);
+		if(devInfo != 0){
+			for (let i = 0; i < 3; i++){
+				confDevBuffer[devChar][i] = devInfo[i+1];
+			}
+			for (let i = 4; i < devInfo.length; i++){
+				confDevBuffer[devChar][3] += devInfo[i];
+				if(i < (devInfo.length - 1))
+					confDevBuffer[devChar][3] += ";";
+			}
+		}
+	}
+	devSelChange();
+	setWindow(document.getElementById("Dev"));
+}
+function devSelChange(){
+	var selBoxChar = document.getElementById("boxSel").value;
+	var ins = document.getElementById("Dev").getElementsByTagName("input");
+	for (let i = 0; i < 4; i++){
+		ins[i].value = confDevBuffer[selBoxChar][i];
+	}
+}
+function dSU(){
+	var selBoxChar = document.getElementById("boxSel").value;
+	var ins = document.getElementById("Dev").getElementsByTagName("input");
+	if(ins[1].value == "0"){
+		confDevBuffer[selBoxChar] = ["0", "0", "0", ""];
+	}else{
+		for (let i = 0; i < 4; i++){
+			confDevBuffer[selBoxChar][i] = ins[i].value;
+		}
+	}
+}
+function closeDev(e, save){
+	if(save){
+		var saveStr = "";
+		for (let i = 65; i < 91; i++){
+			var devChar = String.fromCharCode(i);
+			if(confDevBuffer[devChar][1] != "0"){
+				saveStr += "\r" + devChar;
+				for (let i = 0; i < 4; i++){
+					if(confDevBuffer[devChar][i] != "")
+						saveStr += "\t" + confDevBuffer[devChar][i];
+				}
+			}
+		}
+		saveStr = saveStr.replaceAll(";", "\t");
+		devGen(saveStr);
+		CNSavereq.open("GET", "/sconf?dev=" + encodeURIComponent(saveStr));
+		CNSavereq.send();
+	}
+	closeWindow(e);
+}
+function setWindow(elm){
+	elm.style.display = "block";
+	elm.style.top = (screen.height/2-150) + "px";
+	elm.style.left = (screen.width/2-200) + "px";
+	document.body.firstElementChild.style.opacity = 0.1;
+	var btns = document.body.firstElementChild.getElementsByTagName("button")
+	for (let i = 0; i < btns.length; i++){
+		btns[i].innerText.disabled = true;
+	}
+	document.getElementsByTagName("input")[0].disabled = true;
+}
+function closeWindow(e){
+	document.body.firstElementChild.style.opacity = 1;
+	e.target.parentElement.parentElement.style.display = "none";
+	var btns = document.body.firstElementChild.getElementsByTagName("button")
+	for (let i = 0; i < btns.length; i++){
+		btns[i].innerText.disabled = false;
+	}
+	document.getElementsByTagName("input")[0].disabled = false;
+}
+function boxSelChange(e){
+	e.target.blur();
+	arrowKey(null);
+}
+function search(e){
+	inTerm = e.target.value;
+	if(inTerm != ""){
+		document.getElementById("addBtn").disabled = true;
+		document.getElementById("saveBtn").disabled = true;
+		var sortedDB = new Array();
+		sortedDB[0] = new Array();
+		for (let i = 0; i < DB.length; i++){
+			for (let j = 1; j < DB[i].length; j++){
+				sortedDB[0].push(DB[i][j]);
+			}
+		}
+		sortedDB[0].sort(function(a, b){return rate(b, inTerm) - rate(a, inTerm)});
+		sortedDB[0].unshift("Výsledky vyhledávání:");
+		DBDraw(sortedDB, false);
+	}else{
+		DBDraw(DB, true);
+		document.getElementById("addBtn").disabled = false;
+		document.getElementById("saveBtn").disabled = false;
+	}
+}
+function rate(orig, comp){
+	orig = orig.toLowerCase();
+	comp = comp.toLowerCase();
+	var score = 0;
+	for (let i = 0; i < comp.length; i++){
+		if(orig.includes(comp[i])){
+			score++;
+			orig = orig.substring(orig.indexOf(comp[i]) + 1);
+		}
+	}
+	return score / comp.length;
+}
+</script>
+</head>
+<body onload="load()">
+<main>
+<nav>
+<button id="addBtn" onclick="addNew()">Přidat</button>
+<button onclick="WiFiSettings()">WiFi</button>
+<button onclick="devSettings()">Skříňky</button>
+<button onclick="wipeMarked()">Odznačit</button>
+<button id="saveBtn" onclick="save()">Uložit</button>
+<input class="search" type="search" placeholder="hledat" oninput="search(event)">
+</nav>
+<table id="list">
+</table>
+</main>
+
+<div id="WiFi" class="wind">
+<nav>
+<button onclick="closeWiFiSettings(event, false)">Zavřít</button>
+<button onclick="closeWiFiSettings(event, true)">Uložit</button>
+</nav>
+<div style="line-height:3">
+<label for="SSIDIN">Hostname:</label>
+<input type="text"  name="SSIDIN"><br>
+<label for="PASSIN">SSID:</label>
+<input type="text" name="PASSIN"><br>
+<label for="HOSTNIN">Heslo:</label>
+<input type="text" name="HOSTNIN">
+</div>
+</div>
+
+<div id="Loc" class="wind">
+<nav>
+<button onclick="closeLoc(event,false)">Zavřít</button>
+<button onclick="closeLoc(event,true)">Uložit</button>
+</nav>
+<label for="boxCode">Označení skříňky:</label>
+<select name="boxCode" id="boxCode" onchange="boxSelChange(event)"></select>
+<br>
+<p>Použijte šipky pro určení pozice. Současné umístění: <output id="currLoc">0</output></p>
+</div>
+
+<div id="New" class="wind">
+<nav>
+<button onclick="closeNew(event,false)">Zavřít</button>
+<button onclick="closeNew(event,true)">Další</button>
+</nav>
+<div style="line-height:3">
+<label for="cat">Kategorie:</label>
+<select name="cat" id="cat"></select>
+<br>
+<label for="newName">Název:</label>
+<input type="text" id="newName" name="newName"><br>
+<label for="newStock">Počet:</label>
+<input type="number" id="newStock" name="newStock" min="0" value="0"><br>
+</div>
+</div>
+
+<div id="Dev" class="wind">
+<nav>
+<button onclick="closeDev(event,false)">Zavřít</button>
+<button onclick="closeDev(event,true)">Uložit</button>
+</nav>
+<div style="line-height:3">
+<label for="boxSel">Skříňka:</label>
+<select name="boxSel" id="boxSel" onchange="devSelChange()"></select>
+<br>
+<label for="devPin">Pin:</label>
+<input type="number" name="devPin" min="0" max="39" onchange="dSU()"><br>
+<label for="devNLED">Počet diod:</label>
+<input type="number" name="devNLED" min="0" max="255" onchange="dSU()"><br>
+<label for="devRow">Diod v řádku:</label>
+<input type="number" name="devRow" min="0" max="255" onchange="dSU()"><br>
+<label for="devJ">Spojené diody:</label>
+<input type="text" name="devJ" placeholder="např. 23-25;26-28" onchange="dSU()"><br>
+</div>
+</div>
+
+<input type="color" id="col" value="#ffffff" style="display:none;" onchange="colorPickerReturn()">
+</body>
+</html>
